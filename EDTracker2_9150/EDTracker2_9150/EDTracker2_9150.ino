@@ -519,11 +519,10 @@ void loop()
       lastUpdate = nowMillis + 100;
       lastDriftX = newv[0];
 
-      long tempNow;
-
-      mpu_get_temperature (&tempNow);
       if (outputUI )
       {
+        long tempNow;
+        mpu_get_temperature (&tempNow);
         Serial.print("T\t");
         Serial.println(tempNow);
       }
