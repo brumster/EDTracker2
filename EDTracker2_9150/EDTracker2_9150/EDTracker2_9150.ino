@@ -1,24 +1,26 @@
 //
 //  Head Tracker Sketch
 //
-const char  infoString []   = "EDTrackerMag V4.0.3";
+const char  infoString []   = "EDTrackerMag V4.0.4";
 
-//
 // Changelog:
-// 2014-11-10 RJ  Move to Arduino IDE 158 with newer copmiler = smaller code
-//                Combine Invensense DMP output with continuous magnetometer
-//                drift adjustment
-// 2014-12-24 RJ  Implements startup auto calibration and new magnetometer drift compensation
-// 2015-01-25 RJ  Fix mag wraping/clamping.
-// 2015-02-13 RJ  Fix mag heading average when heading is close to +/- PI boundary
-//            RJ  Fix incorrect roll compensation for mag heading
-// 2015-03-01 RJ  Fix smoothing val not being saved to EEPROM
-// 2015-06-20 DMH Fixed incorrect data type for sensor_data breaking compile; cannot upversion
-//                due to lagging behind pocketmoon repo, but no functional change anyway
+//            Release
+// Date       Version   Author  Comment
+// 2014-11-10           RJ      Move to Arduino IDE 158 with newer copmiler = smaller code
+//                              Combine Invensense DMP output with continuous magnetometer drift adjustment
+// 2014-12-24           RJ      Implements startup auto calibration and new magnetometer drift compensation
+// 2015-01-25           RJ      Fix mag wraping/clamping.
+// 2015-02-13           RJ      Fix mag heading average when heading is close to +/- PI boundary
+//                      RJ      Fix incorrect roll compensation for mag heading
+// 2015-03-01 4.0.4     RJ      Fix smoothing val not being saved to EEPROM
+// 2015-06-20 4.0.4     DMH     Fixed incorrect data type for sensor_data breaking compile; cannot upversion
+//                              due to lagging behind pocketmoon repo, but no functional change anyway
+// 2016-01-27 4.0.4     DMH     Non-functional code format change to allow compile on IDE 1.6.7
+//                              Some tidying up while at it
 /* ============================================
 EDTracker device code is placed under the MIT License
 
-Copyright (c) 2014,2015 Rob James, Dan Howell
+Copyright (c) 2014-2016 Rob James, Dan Howell
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -41,7 +43,10 @@ THE SOFTWARE.
 */
 
 
-/* Starting sampling rate. Ignored if POLLMPU is defined above */
+/*
+ * Starting sampling rate. Ignored if POLLMPU is defined above
+ * Users building for slower (8MHz) AVRs are advised to tune this down to 100
+ */
 #define DEFAULT_MPU_HZ    (200)
 
 #define EMPL_TARGET_ATMEGA328
@@ -56,8 +61,14 @@ extern "C" {
 #include <inv_mpu_dmp_motion_driver.h>
 }
 
-
 float xDriftComp = 0.0;
+
+#define PI    32768.0
+#define TWOPI 65536.0
+#define PITCH 1
+#define ROLL  2
+#define YAW   0
+
 
 /* EEPROM Offsets for config and calibration stuff*/
 #define EE_VERSION 0
@@ -101,9 +112,12 @@ float xDriftComp = 0.0;
 float magOffset[3];
 float magXform[18];
 
+/*
+ * Pin defines
+ */
+
 #define SDA_PIN 2
 #define SCL_PIN 3
-
 #define LED_PIN 17 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 #define BUTTON_PIN 10
 
@@ -121,7 +135,6 @@ float scaleF[3];
 float outputLPF = 0.5; //0 is no filter  max value 0.999...
 unsigned char revision;
 
-// packet structure for InvenSense teapot demo
 unsigned long lastMillis = 0;
 unsigned long lastUpdate = 0;
 
@@ -147,6 +160,11 @@ int consecCount = 0;
 boolean behind = false;
 boolean offsetMag = false;
 TrackState_t joySt;
+long avgGyro[3] ;//= {0, 0, 0};
+volatile boolean new_gyro ;
+boolean startup = true;
+int  startupPhase = 0;
+int  startupSamples;
 
 /* The mounting matrix below tells the MPL how to rotate the raw
  * data from the driver(s).
@@ -187,8 +205,10 @@ long readLongEE(int address) {
           (long)EEPROM.read(address + 1) << 8 |
           (long)EEPROM.read(address));
 }
-long avgGyro[3] ;//= {0, 0, 0};
 
+/*
+ * Initialise function
+ */
 void setup() {
 
   Serial.begin(115200);
@@ -221,15 +241,6 @@ void setup() {
 
 }
 
-
-
-
-/****************************************
-* Gyro/Accel/DMP Configuration
-****************************************/
-#define PI    32768.0
-#define TWOPI 65536.0
-
 float wrap(float angle)
 {
   if (angle > PI)
@@ -258,15 +269,6 @@ void recenter()
   // Serial.println(rawMagHeading);
   //Serial.println(offsetMag);
 }
-
-volatile boolean new_gyro ;
-boolean startup = true;
-int  startupPhase = 0;
-int  startupSamples;
-
-#define PITCH 1
-#define ROLL  2
-#define YAW   0
 
 void loop()
 {
@@ -310,7 +312,8 @@ void loop()
 
     short mag[3];
     magSampled  = mpu_get_compass_reg(mag);
-
+    Serial.println(magSampled);
+    
     if (magSampled == 0)
     {
 
@@ -465,8 +468,8 @@ void loop()
     if (ii[0] > 30000  || ii[0] < -30000)
       joySt.xAxis = ii[0] ;
     else
-      joySt.xAxis = joySt.xAxis * outputLPF + ii[0] * (1.0 - outputLPF) ;
-
+      
+    joySt.xAxis = joySt.xAxis * outputLPF + ii[0] * (1.0 - outputLPF) ;
     joySt.yAxis = joySt.yAxis * outputLPF + ii[1] * (1.0 - outputLPF) ;
     joySt.zAxis = joySt.zAxis * outputLPF + ii[2] * (1.0 - outputLPF) ;
 
@@ -526,6 +529,7 @@ void loop()
         Serial.print("T\t");
         Serial.println(tempNow);
       }
+      
     }
 
     // magHeading = constrain (magHeading, -32767, 32767);
@@ -713,20 +717,9 @@ void parseInput()
  * ISR context. In this example, it sets a flag protecting the FIFO read
  * function.
  */
-//void gyro_data_ready_cb(void) {
-//  new_gyro = 1;
-//}
-
 ISR(INT6_vect) {
   new_gyro = 1;
 }
-
-
-//void tap_cb (unsigned char p1, unsigned char p2)
-//{
-//  return;
-//}
-
 
 void initialize_mpu() {
   mpu_init(&revision);
@@ -856,8 +849,7 @@ void sendInfo()
   Serial.println(infoString);
 }
 
-void
-scl()
+void scl()
 {
   Serial.print("s\t");
   Serial.print(expScaleMode);
@@ -909,8 +901,7 @@ void printtab()
 }
 
 
-void
-loadMagCalibration()
+void loadMagCalibration()
 {
   for (int i = 0; i < 3 ; i ++)
   {
@@ -924,8 +915,7 @@ loadMagCalibration()
 }
 
 
-void
-loadSettings()
+void loadSettings()
 {
   orientation = constrain(EEPROM.read(EE_ORIENTATION), 0, 3);
   expScaleMode = EEPROM.read(EE_EXPSCALEMODE);

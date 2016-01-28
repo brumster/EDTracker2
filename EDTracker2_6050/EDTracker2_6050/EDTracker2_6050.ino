@@ -1,43 +1,41 @@
-//TODO
-//enable scale adjust ? via UI  + -
-//add mouse emu
-
-
 //
 //  Head Tracker Sketch
 //
 
-char* const PROGMEM infoString = "EDTrackerII V2.20.7";
+char* const PROGMEM infoString = "EDTrackerII V2.20.8";
 
 //
 // Changelog:
-// 2014-05-05 Migrate V1 Head Tracker to new port of Invensense libs
-// 2014-05-13 Remove dodgy comment line. Move bias values away from user editable section
-// 2014-05-16 Stuff
-// 2014-05-20 Amend version number to keep in line with changes
-// 2014-05-23 Set Gyro and Accel FSR to keep DMP happy (undocumented req?)
-// 2014-05-28 Fix constraint
-// 2014-05-28 Test implementation of basic sping-back to counter yaw drift
-// 2014-05-28 Increase sample rate from 100 to 200 hz.
-// 2014-06-02 Fix drift comp value stored in EEPROM
-// 2014-06-02 Push bias to DMP rather than MPU
-// 2014-06-03 Remove revision for now.
-// 2014-06-11 Put revision back in plus temps. Toggle linear/exp via UI. Say Hi.
-// 2014-06-15 Fix yaw lock at 180. Reduce recalibration delay
-// 2014-06-20 Wrap drift comp value and also wrap DMP + drift comp to prevent yaw lock
-// 2014-07-01 Add 'side mount' orientation numbers. Raise sping-back window
-// 2014-08-01 Add UI adjustable scaling. Arduino 157 compatible
-// 2014-08/03 Fix clash of 'save drift' and 'decrement yaw scale
-// 2014-08/04 Config based Poll MPU or interrupts
-// 2014-09-04 Upversion to reflect fix to orientation
-// 2014-09-18 Apply auto-centre logic before scaling (behaves better with opentrack)
-// 2014-09-29 Correct autocentre behaviour for exp  vs linear response. 
-//            Add 4 options for auto centering
-
+//            Release
+// Date       Version   Comment
+// 2014-05-05           Migrate V1 Head Tracker to new port of Invensense libs
+// 2014-05-13           Remove dodgy comment line. Move bias values away from user editable section
+// 2014-05-16           Stuff
+// 2014-05-20           Amend version number to keep in line with changes
+// 2014-05-23           Set Gyro and Accel FSR to keep DMP happy (undocumented req?)
+// 2014-05-28           Fix constraint
+// 2014-05-28           Test implementation of basic sping-back to counter yaw drift
+// 2014-05-28           Increase sample rate from 100 to 200 hz.
+// 2014-06-02           Fix drift comp value stored in EEPROM
+// 2014-06-02           Push bias to DMP rather than MPU
+// 2014-06-03           Remove revision for now.
+// 2014-06-11           Put revision back in plus temps. Toggle linear/exp via UI. Say Hi.
+// 2014-06-15           Fix yaw lock at 180. Reduce recalibration delay
+// 2014-06-20           Wrap drift comp value and also wrap DMP + drift comp to prevent yaw lock
+// 2014-07-01           Add 'side mount' orientation numbers. Raise sping-back window
+// 2014-08-01           Add UI adjustable scaling. Arduino 157 compatible
+// 2014-08/03           Fix clash of 'save drift' and 'decrement yaw scale
+// 2014-08/04           Config based Poll MPU or interrupts
+// 2014-09-04           Upversion to reflect fix to orientation
+// 2014-09-18           Apply auto-centre logic before scaling (behaves better with opentrack)
+// 2014-09-29           Correct autocentre behaviour for exp  vs linear response. 
+//                      Add 4 options for auto centering
+// 2016-01-27 2.20.8    Non-functional code format change to allow compile on IDE 1.6.7
+//                      Some tidying up while at it
 /* ============================================
 EDTracker device code is placed under the MIT License
 
-Copyright (c) 2014 Rob James, Dan Howell
+Copyright (c) 2014-2016 Rob James, Dan Howell
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -59,30 +57,25 @@ THE SOFTWARE.
 ===============================================
 */
 
-//Linear/exponential response now controled via UI
-//These are now default if not yet set by user via UI
-//float xExpScale = 8.0;
-//float yExpScale = 8.0;
-//float zExpScale = 8.0;
-//
-//float xScale = 4.0;
-//float yScale = 4.0;
-//float zScale = 4.0;
-
 //Variables used continual auto yaw compensation
 float dzX = 0.0;
 float lX = 0.0;
 unsigned int ticksInZone = 0;
-//unsigned int reports = 0;
+
 
 boolean pollMPU = false;
 
-/* Starting sampling rate. Ignored if POLLMPU is defined above */
+/*
+ * Starting sampling rate. Ignored if POLLMPU is defined above
+ * Users building for slower (8MHz) AVRs are advised to tune this down to 100
+ */
 #define DEFAULT_MPU_HZ    (200)
-// 50 ok
 
 #define EMPL_TARGET_ATMEGA328
 
+/* 
+ * Enable following line for serial debug output, but performance will be impacted 
+ */
 //#define DEBUG
 
 #ifdef DEBUG
@@ -133,11 +126,11 @@ float xDriftComp = 0.0;
 #define EE_POLLMPU 33
 #define EE_AUTOCENTRE 34
 
-
-
+/*
+ * Pin defines
+ */
 #define SDA_PIN 2
 #define SCL_PIN 3
-
 #define LED_PIN 17 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 #define BUTTON_PIN 10
 
@@ -162,7 +155,7 @@ float   yawScale = 1.0;
 float   pitchScale = 1.0;
 unsigned char revision;
 
-// packet structure for InvenSense teapot demo
+// Time tracking
 unsigned long lastMillis;
 unsigned long lastUpdate;
 
@@ -174,10 +167,7 @@ long gBias[3], aBias[3], fBias[3];;
 int   sampleCount = 0;
 boolean calibrated = false;
 
-// no longer needed
-//Allows the MPU6050 to settle for 10 seconds.
-//There should be no drift after this time
-//unsigned short  calibrateTime     = 1000;
+unsigned long sensor_timestamp;
 
 //Number of samples to take when recalibrating
 byte  recalibrateSamples =  200;
@@ -188,7 +178,10 @@ boolean blinkState;
 byte autocentre = 1;
 
 bool supresscentring = false;
-//float aTemp=0.0;
+//unsigned char accel_fsr;  // accelerometer full-scale rate, in +/- Gs (possible values are 2, 4, 8 or 16).  Default:  2
+//unsigned short dmp_update_rate; // update rate, in hZ (possible values are between 4 and 1000).  Default:  100
+//unsigned short gyro_fsr;  // Gyro full-scale_rate, in +/- degrees/sec, possible values are 250, 500, 1000 or 2000.  Default:  2000
+boolean new_gyro , dmp_on;
 
 TrackState_t joySt;
 
@@ -233,17 +226,16 @@ long readLongEE(int address) {
           (long)EEPROM.read(address));
 }
 
+/*
+ * Initialise function
+ */
 void setup() {
 
   Serial.begin(115200);
-  //delay(500);
 
 #ifdef DEBUG
   outputMode = UI;
 #endif;
-
-  //long l = readLongEE(0);
-  //Serial.println(l);
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   //  pinMode(SDA_PIN, INPUT);
@@ -254,12 +246,17 @@ void setup() {
   digitalWrite(SDA_PIN, HIGH);
   digitalWrite(SDA_PIN, LOW);
 
+  // Load the saved device orientation from EEPROM...
   orientation = constrain(EEPROM.read(EE_ORIENTATION), 0, 5);
 
+  // Load the saved scaling values from EEPROM...
   expScaleMode = EEPROM.read(EE_EXPSCALEMODE);
   getScales();
 
+  // Load whether we are in polling or interrupt mode from EEPROM...
   pollMPU = EEPROM.read(EE_POLLMPU);
+
+  // Load the auto-centering setting from EEPROM...
   autocentre = EEPROM.read(EE_AUTOCENTRE);
 
   // by default
@@ -271,6 +268,7 @@ void setup() {
   //    EEPROM.write(EE_AUTORECENTRE,autocentre);
   //  }
 
+  // Load the saved drift compensation value from EEPROM...
   xDriftComp = (float)readIntEE(EE_XDRIFTCOMP) / 256.0;
 
   // join I2C bus (I2Cdev library doesn't do this automatically)
@@ -315,21 +313,6 @@ void setup() {
 
 }
 
-/*****************************************
-* Conversion Factors
-*****************************************/
-
-/****************************************
-* Gyro/Accel/DMP State
-****************************************/
-unsigned long sensor_timestamp;
-
-
-
-/****************************************
-* Gyro/Accel/DMP Configuration
-****************************************/
-
 void recenter()
 {
   if (outputMode == UI)
@@ -339,10 +322,8 @@ void recenter()
   sampleCount = cx = cy = cz = 0;
   calibrated = false;
 }
-//unsigned char accel_fsr;  // accelerometer full-scale rate, in +/- Gs (possible values are 2, 4, 8 or 16).  Default:  2
-//unsigned short dmp_update_rate; // update rate, in hZ (possible values are between 4 and 1000).  Default:  100
-//unsigned short gyro_fsr;  // Gyro full-scale_rate, in +/- degrees/sec, possible values are 250, 500, 1000 or 2000.  Default:  2000
-boolean new_gyro , dmp_on;
+
+
 void loop()
 {
   nowMillis = millis();
@@ -527,9 +508,6 @@ void loop()
 
       if (autocentre > 0 && outputMode != UI)/*!supresscentring )/**/
       {
-        //dzlimit *=(float) autocentre;
-//Serial.print("M\tDZLimit ");
-//Serial.println(dzlimit);
 
         //if (fabs(iX) < 3000.0 && fabs(iX - lX) < 5.0 && fabs(iY) < 800)
         //if (fabs(newX) < 300.0 && fabs(newX - lX) < 1.4 && fabs(iY) < 1000)
@@ -628,18 +606,6 @@ void parseInput()
     // read the incoming byte:
     byte command = Serial.read();
 
-
-
-    //    if (command == 'e' || command == 'E' ||
-    //        command == 'f' || command == 'F' ||
-    //        command == 'c' || command == 'C' ||
-    //        command == 'd' || command == 'G')
-    //if (
-    //(command >= 'c' && command <= 'f') ||
-    //(command >= 'E' && command <= 'G') ||
-    //command == 'C')
-    //      {
-
     bool scale = false;
     if (command == 'c')
     {
@@ -689,9 +655,6 @@ void parseInput()
       setScales();
       scl();
     }
-
-    //    }
-    //else
     if (command == 'S')
     {
       outputMode = OFF;
@@ -722,9 +685,7 @@ void parseInput()
     else if (command == 'V')
     {
       Serial.println("V"); //verbose
-supresscentring=false;
-      //Serial.print("I\t");
-      //Serial.println(infoString);
+      supresscentring=false;
       sendInfo();
 
       scl();
@@ -736,16 +697,9 @@ supresscentring=false;
     }
     else if (command == 'I')
     {
-      //Serial.print("I\t");
-      //Serial.println(infoString);
       sendInfo();
 
       Serial.println("M\t----------------");
-
-      //Serial.print("O\t");
-      //Serial.println(orientation);
-      //sendByte('O', orientation);
-
       Serial.print("M\tDrift Comp");
       Serial.println(xDriftComp);
 
@@ -759,11 +713,7 @@ supresscentring=false;
       Serial.print("M\tMPU Revision ");
       Serial.println(revision);
       scl();
-      //polling();
       sendByte('p', pollMPU);
-
-      //      Serial.print("O\t");
-      //      Serial.println(orientation);
       sendByte('O', orientation);
       sendByte('#', autocentre);
 
@@ -838,6 +788,7 @@ supresscentring=false;
 void gyro_data_ready_cb(void) {
   new_gyro = 1;
 }
+
 ISR(INT6_vect) {
   new_gyro = 1;
 }
@@ -847,8 +798,6 @@ void tap_cb (unsigned char p1, unsigned char p2)
 {
   return;
 }
-
-
 
 boolean initialize_mpu() {
   int result;
@@ -966,8 +915,6 @@ void mess(char *m, long*v)
   Serial.println(v[2]);
 }
 
-
-
 void getScales()
 {
   if (expScaleMode)
@@ -1029,8 +976,7 @@ void sendInfo()
   Serial.println(infoString);
 }
 
-void
-scl()
+void scl()
 {
   Serial.print("s\t");
   Serial.print(expScaleMode);

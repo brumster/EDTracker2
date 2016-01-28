@@ -4,19 +4,21 @@
 
 char* const PROGMEM infoString = "ED Tracker Calibration V2.5.3";
 
-//
 // Changelog:
-// 2014-05-05 Initial Version
-// 2014-05-20 Replace calibration loop - simple iterative method
-// 2014-06-02 Mess around with stuff
-// 2014-06-10 Add temps. Allow individial biasing of accel axis
-// 2014-06-15 Add option to clear bias to factory defaults
-// 2014-06-22 Fix LED blinking
-// 2014-08-01 many many things
-// 2014-08-03 Wipe all memory values during WIPE
-// 2014-08-04 Add ability to toggle MPU Polling on/off
-// 2014-09-24 Update for calibration - zone in quicker
-// 2014-09-29 Fixed temperature reporting
+//            Release
+// Date       Version   Comment
+// 2014-05-05           Initial Version
+// 2014-05-20           Replace calibration loop - simple iterative method
+// 2014-06-02           Mess around with stuff
+// 2014-06-10           Add temps. Allow individial biasing of accel axis
+// 2014-06-15           Add option to clear bias to factory defaults
+// 2014-06-22           Fix LED blinking
+// 2014-08-01           many many things
+// 2014-08-03           Wipe all memory values during WIPE
+// 2014-08-04           Add ability to toggle MPU Polling on/off
+// 2014-09-24           Update for calibration - zone in quicker
+// 2014-09-29           Fixed temperature reporting
+// 2016-01-27 2.5.3     Non-functional code format change to allow compile on IDE 1.6.7
 
 /* ============================================
 EDTracker device code is placed under the MIT License
@@ -593,10 +595,7 @@ void loadBiases() {
   return ;
 }
 
-
-
-void
-polling()    // Read only in main sketch
+void polling()    // Read only in main sketch
 {
   Serial.print("p\t");
   Serial.println(pollMPU);
