@@ -2,7 +2,7 @@
 //  Head Tracker Sketch
 //
 
-char* const PROGMEM infoString = "EDTrackerII V2.20.8";
+char* const PROGMEM infoString = "EDTrackerII V2.20.9";
 
 //
 // Changelog:
@@ -32,6 +32,8 @@ char* const PROGMEM infoString = "EDTrackerII V2.20.8";
 //                      Add 4 options for auto centering
 // 2016-01-27 2.20.8    Non-functional code format change to allow compile on IDE 1.6.7
 //                      Some tidying up while at it
+// 2016-01-30 2.20.9    Version uplift only to reflect re-build with new hardware package, that
+//                      removes the keyboard/mouse aspects from the HID descriptor.
 /* ============================================
 EDTracker device code is placed under the MIT License
 

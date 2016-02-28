@@ -1,7 +1,7 @@
 //
 //  Head Tracker Sketch
 //
-const char  infoString []   = "EDTrackerMag V4.0.4";
+const char  infoString []   = "EDTrackerMag V4.0.5";
 
 // Changelog:
 //            Release
@@ -17,6 +17,8 @@ const char  infoString []   = "EDTrackerMag V4.0.4";
 //                              due to lagging behind pocketmoon repo, but no functional change anyway
 // 2016-01-27 4.0.4     DMH     Non-functional code format change to allow compile on IDE 1.6.7
 //                              Some tidying up while at it
+// 2016-01-30 4.0.5     DH      Removed superfluous debug code, added compiler
+//                              warnings for people choosing wrong hardware
 /* ============================================
 EDTracker device code is placed under the MIT License
 
@@ -42,6 +44,17 @@ THE SOFTWARE.
 ===============================================
 */
 
+#pragma message "Sketch is EDTracker2_9150..."
+
+#ifndef MPU9150
+#error "MPU9150 is not defined; have you chosen the wrong board in Arduino IDE?!"
+#endif
+
+// Comment out for production firmware!
+//#define DEBUG
+#ifdef DEBUG
+#warning "****** DEBUG defined  ******"
+#endif
 
 /*
  * Starting sampling rate. Ignored if POLLMPU is defined above
@@ -61,59 +74,47 @@ extern "C" {
 #include <inv_mpu_dmp_motion_driver.h>
 }
 
-float xDriftComp = 0.0;
-
+// In raw reading values from the MPU...
 #define PI    32768.0
 #define TWOPI 65536.0
+
+// Array indices of pitch, yaw and roll
 #define PITCH 1
 #define ROLL  2
 #define YAW   0
 
+// MPU9250 has more sensitive magnetometer than 9150, so scale the values down to keep compatibility with GUI
+#ifdef MPU9250
+#define MAG_SCALEFACTOR 4
+#else
+#define MAG_SCALEFACTOR 1
+#endif
 
 /* EEPROM Offsets for config and calibration stuff*/
-#define EE_VERSION 0
-// these are now longs (4 bytes)
-#define EE_XGYRO 1
-#define EE_YGYRO 5
-#define EE_ZGYRO 9
-#define EE_XACCEL 13
-#define EE_YACCEL 17
-#define EE_ZACCEL 21
-// 1 byte
-#define EE_ORIENTATION 25
-// 2 bytes
-#define EE_LPF 26
-
-//0 for linear, 1 for exponential
-#define EE_EXPSCALEMODE 28
-
-//2x 1 byte  in 6:2   0.25 steps should be ok
-#define EE_YAWSCALE 29
-#define EE_PITCHSCALE 30
-#define EE_YAWEXPSCALE 31
-#define EE_PITCHEXPSCALE 32
-
-//single bytes
-#define EE_POLLMPU 33
-#define EE_AUTOCENTRE 34
-
-//The temp at which the stored drift compensation was measured.
-//2 byte
-#define EE_CALIBTEMP    35
-
-//2 byte pairs in 9:7 format
-#define EE_MAGOFFX      40
-#define EE_MAGOFFY      42
-#define EE_MAGOFFZ      44
-
-//6 x 2 byte 2:14 format (signed)
-#define EE_MAGXFORM     50
-
-float magOffset[3];
-float magXform[18];
+#define EE_VERSION 0                                   // char (1 byte)
+#define EE_XGYRO 1                                     // long (4 bytes)
+#define EE_YGYRO 5                                     // long (4 bytes)
+#define EE_ZGYRO 9                                     // long (4 bytes)
+#define EE_XACCEL 13                                   // long (4 bytes)
+#define EE_YACCEL 17                                   // long (4 bytes)
+#define EE_ZACCEL 21                                   // long (4 bytes)
+#define EE_ORIENTATION 25                              // char (1 byte)
+#define EE_LPF 26                                      // int (2 bytes)
+#define EE_EXPSCALEMODE 28                             // 0 for linear, 1 for exponential
+#define EE_YAWSCALE 29                                 // 2x 1 byte  in 6:2   0.25 steps should be ok
+#define EE_PITCHSCALE 30                               // 2x 1 byte  in 6:2   0.25 steps should be ok
+#define EE_YAWEXPSCALE 31                              // 2x 1 byte  in 6:2   0.25 steps should be ok
+#define EE_PITCHEXPSCALE 32                            // 2x 1 byte  in 6:2   0.25 steps should be ok
+#define EE_POLLMPU 33                                  // *UNUSED* char (1 byte), poll or int mode
+#define EE_AUTOCENTRE 34                               // *UNUSED* char (1 byte), auto-centering enabled or disabled TODO : REDUNDANT?
+#define EE_CALIBTEMP    35                             // *UNUSED* int (2 byte) - REDUNDANT?
+#define EE_MAGOFFX      40                             // int (2 byte) mag offset for X axis in 9:7 format
+#define EE_MAGOFFY      42                             // int (2 byte) mag offset for Y axis in 9:7 format
+#define EE_MAGOFFZ      44                             // int (2 byte) mag offset for Z axis in 9:7 format
+#define EE_MAGXFORM     50                             // (12 bytes) mag calibration matrix in 6 x 2 byte 2:14 signed format
 
 /*
- * Pin defines
+ * Pin defines (assume Sparkfun Pro Micro; change as necessary)
  */
 
 #define SDA_PIN 2
@@ -125,22 +126,36 @@ float magXform[18];
 #define cbi(sfr, bit) (_SFR_BYTE(sfr) &= ~_BV(bit))
 #endif
 
+// Flag for if we're outputting detailed GUI info or not
 boolean outputUI = false;
 
-float lastDriftX;
-int driftSamples = 0;
-
-boolean expScaleMode = 0;
-float scaleF[3];
-float outputLPF = 0.5; //0 is no filter  max value 0.999...
+// Used for MPU init
 unsigned char revision;
 
+// Scaling-related
+boolean expScaleMode = 0;         // Exponential or linear scaling mode?
+float scaleF[3];                  // Scaling values for each axis
+float outputLPF = 0.5;            // Filtering - 0 is no filter,  max value 0.999...
+
+// Timer related so track operations between loop iterations (LED flashing, etc)
 unsigned long lastMillis = 0;
 unsigned long lastUpdate = 0;
 
-float c[4];
+// Holds the time since sketch stared
+unsigned long  nowMillis;
+boolean blinkState;
 
-long gBias[3];
+// Mag/drift compensation related...
+float compass[4];
+float magOffset[3];               // Offset values for mag, since no-one ever sits facing perfect north ;)
+float magXform[18];               // Transformation matrix for hard/soft iron calibration of the magnetometer
+float xDriftComp = 0.0;           // Currently applied drift compensation
+float magHeading, lastMagHeading, rawMagHeading;
+float lastDriftX;                 // Used to track drift (difference between gyro and mag readings) over loop iterations and adjust
+boolean behind = false;           // When there is a difference between mag and gyro headings, used to flag whether it's behind or ahead
+int consecCount = 0;              // ...and by how many counts (loops) it has been behind/ahead of the gyro
+boolean offsetMag = false;        // The magnetometer reads within a 180 degree arc, not 360, so we keep track of when we are in the "other half" of the
+                                  // circle and flag this as an offset mag situation
 
 //Running count of samples - used when recalibrating
 int   sampleCount = 0;
@@ -149,22 +164,15 @@ boolean calibrated = true;
 //Number of samples to take when recalibrating
 byte  recalibrateSamples =  255;
 
-// Holds the time since sketch stared
-unsigned long  nowMillis;
-boolean blinkState;
-
-float magHeading, lastMagHeading,   rawMagHeading;
-;
-int consecCount = 0;
-
-boolean behind = false;
-boolean offsetMag = false;
-TrackState_t joySt;
 long avgGyro[3] ;//= {0, 0, 0};
+long gBias[3];                    // Gyro biases for MPU
 volatile boolean new_gyro ;
-boolean startup = true;
-int  startupPhase = 0;
+boolean startup = true;           // Flags when we are in the startup (auto-bias) phase (TODO: remove and just use startupPhase for logic)
+int  startupPhase = 0;            // and which type of phase it is
 int  startupSamples;
+
+// The "Tracker" object which is used to mimic the joystick; see HID.cpp within the hardware folder
+TrackState_t joySt;
 
 /* The mounting matrix below tells the MPL how to rotate the raw
  * data from the driver(s).
@@ -206,9 +214,9 @@ long readLongEE(int address) {
           (long)EEPROM.read(address));
 }
 
-/*
- * Initialise function
- */
+/*******************************************************************************************************
+* Initialise function
+********************************************************************************************************/
 void setup() {
 
   Serial.begin(115200);
@@ -224,9 +232,6 @@ void setup() {
 
   loadMagCalibration();
 
-  // pass oreintated calib matrix back to UI
-  //  reportRawMagMatrix();
-
   // join I2C bus (I2Cdev library doesn't do this automatically)
   Wire.begin();
   TWBR = 12;//12; // 12 400kHz I2C clock (200kHz if CPU is 8MHz)
@@ -241,34 +246,9 @@ void setup() {
 
 }
 
-float wrap(float angle)
-{
-  if (angle > PI)
-    angle -= (TWOPI);
-  if (angle < -PI)
-    angle += (TWOPI);
-  return angle;
-}
-
-void recenter()
-{
-  if (outputUI)
-  {
-    Serial.println("M\tR");
-  }
-  sampleCount = 0;
-
-  for (int i = 0; i < 4; i++)
-    c[i] = 0.0;
-
-  calibrated = false;
-  offsetMag = false;
-
-  if (rawMagHeading > 28000.0  || rawMagHeading < -28000.0)
-    offsetMag = true;
-  // Serial.println(rawMagHeading);
-  //Serial.println(offsetMag);
-}
+/*******************************************************************************************************
+* MAIN LOOP Function
+********************************************************************************************************/
 
 void loop()
 {
@@ -312,17 +292,17 @@ void loop()
 
     short mag[3];
     magSampled  = mpu_get_compass_reg(mag);
-    Serial.println(magSampled);
     
     if (magSampled == 0)
     {
 
-      if (outputUI)
+      if (outputUI) {
         reportRawMag(mag);
+      }
 
-      float ox = (float)mag[0] - magOffset[0] ;
-      float oy = (float)mag[1] - magOffset[1] ;
-      float oz = (float)mag[2] - magOffset[2] ;
+      float ox = (float)mag[0]/MAG_SCALEFACTOR - magOffset[0] ;
+      float oy = (float)mag[1]/MAG_SCALEFACTOR - magOffset[1] ;
+      float oz = (float)mag[2]/MAG_SCALEFACTOR - magOffset[2] ;
 
       float rx = ox * magXform[0] + oy * magXform[1] + oz * magXform[2];
       float ry = ox * magXform[3] + oy * magXform[4] + oz * magXform[5];
@@ -337,7 +317,7 @@ void loop()
       magHeading = rawMagHeading;
 
       if (calibrated)
-        magHeading = magHeading - c[3];
+        magHeading = magHeading - compass[3];
 
       if (offsetMag)
         magHeading = magHeading + 32768.0;
@@ -398,6 +378,13 @@ void loop()
           return ;
         }
       }
+#ifdef DEBUG
+    } else {
+      // TODO remove
+      Serial.print("Mag oops [");
+      Serial.print(magSampled);
+      Serial.println("]");
+#endif
     }
 
     //scale +/- PI to +/- 32767
@@ -410,22 +397,20 @@ void loop()
       if (sampleCount < recalibrateSamples)
       { // accumulate samples
         for (int n = 0; n < 3; n++)
-          c[n] += newv[n];
+          compass[n] += newv[n];
 
-        c[3] += magHeading;
+        compass[3] += magHeading;
         sampleCount ++;
       }
       else
       {
         calibrated = true;
         for (int n = 0; n < 4; n++)
-          c[n] = c[n] / (float)sampleCount;
+          compass[n] = compass[n] / (float)sampleCount;
         if (offsetMag)
-          c[3] = c[3] - 32768.0;
+          compass[3] = compass[3] - 32768.0;
         offsetMag = false;
 
-        //dX = 0.0;//dY = dZ = 0.0;
-        driftSamples = -2;
         recalibrateSamples = 100;//  calibration next time around
         if (outputUI )
         {
@@ -437,7 +422,7 @@ void loop()
 
     // apply drift offsets
     for (int n = 0; n < 3; n++)
-      newv[n] = newv[n] - c[n];
+      newv[n] = newv[n] - compass[n];
 
     // this should take us back to zero BUT we may have wrapped so ..
     if (newv[0] < -32768.0)
@@ -451,11 +436,12 @@ void loop()
     for (int n = 0; n < 3; n++)
     {
       if (expScaleMode) {
+        // Exponential scaling mode
         ii[n] = (long) (0.000122076 * newv[n] * newv[n] * scaleF[n]) * (newv[n] / abs(newv[n]));
       }
       else
       {
-        // and scale to out target range plus a 'sensitivity' factor;
+        // Linear scale to our target range plus a 'sensitivity' factor;
         ii[n] = (long)(newv[n] * scaleF[n] );
       }
     }
@@ -464,14 +450,15 @@ void loop()
     for (int n = 0; n < 3; n++)
       ii[n] = constrain(ii[n], -32767, 32767);
 
-    // Do it to it.
-    if (ii[0] > 30000  || ii[0] < -30000)
+    // Do it to it (Robspeak for "set the axis values on the HID object"!)
+    if (ii[0] > 30000  || ii[0] < -30000) {
       joySt.xAxis = ii[0] ;
-    else
-      
-    joySt.xAxis = joySt.xAxis * outputLPF + ii[0] * (1.0 - outputLPF) ;
-    joySt.yAxis = joySt.yAxis * outputLPF + ii[1] * (1.0 - outputLPF) ;
-    joySt.zAxis = joySt.zAxis * outputLPF + ii[2] * (1.0 - outputLPF) ;
+    } else {
+      joySt.xAxis = joySt.xAxis * outputLPF + ii[0] * (1.0 - outputLPF) ;
+    }
+      joySt.yAxis = joySt.yAxis * outputLPF + ii[1] * (1.0 - outputLPF) ;
+      joySt.zAxis = joySt.zAxis * outputLPF + ii[2] * (1.0 - outputLPF) ;
+    
 
     Tracker.setState(&joySt);
 
@@ -494,14 +481,14 @@ void loop()
 
       tripple(accel);
       tripple(gyro);
-      /*
-              Serial.print((int)rawMagHeading ); //
-              printtab();
-              Serial.print((int)magHeading  );
-              printtab();
-              Serial.print((int)c[3] ); //
-              printtab();
-      */
+#ifdef DEBUG
+      Serial.print((int)rawMagHeading ); //
+      printtab();
+      Serial.print((int)magHeading  );
+      printtab();
+      Serial.print((int)compass[3] ); //
+      printtab();
+#endif
       Serial.println("");
 
     }
@@ -511,13 +498,13 @@ void loop()
       blink();
 
       // apply drift compensation
-      c[0] = c[0] + xDriftComp;
+      compass[0] = compass[0] + xDriftComp;
 
       //handle wrap
-      if (c[0] > 65536.0)
-        c[0] = c[0] - 65536.0;
-      else if (c[0] < -65536.0 )
-        c[0] = c[0] + 65536.0;
+      if (compass[0] > 65536.0)
+        compass[0] = compass[0] - 65536.0;
+      else if (compass[0] < -65536.0 )
+        compass[0] = compass[0] + 65536.0;
 
       lastUpdate = nowMillis + 100;
       lastDriftX = newv[0];
@@ -577,7 +564,7 @@ void loop()
       }
 
       // Tweek the yaw offset. 0.01 keeps the head central with no visible twitching
-      c[0] = c[0] + (float)(consecCount * abs(consecCount)) * 0.012;
+      compass[0] = compass[0] + (float)(consecCount * abs(consecCount)) * 0.012;
 
       //Also tweak the overall drift compensation.
       //DMP still suffers from 'warm-up' issues and this helps greatly.
@@ -589,6 +576,9 @@ void loop()
 }
 
 
+/*******************************************************************************************************
+* Serial Input parsing (UI commands) function
+********************************************************************************************************/
 void parseInput()
 {
   while (Serial.available() > 0)
@@ -713,14 +703,16 @@ void parseInput()
 }
 
 
-/* Every time new gyro data is available, this function is called in an
- * ISR context. In this example, it sets a flag protecting the FIFO read
- * function.
- */
+/*******************************************************************************************************
+* Interrupt service routine for new reading from MPU
+********************************************************************************************************/
 ISR(INT6_vect) {
   new_gyro = 1;
 }
 
+/*******************************************************************************************************
+* MPU initialisation
+********************************************************************************************************/
 void initialize_mpu() {
   mpu_init(&revision);
   mpu_set_compass_sample_rate(100); // defaults to 100 in the libs
@@ -750,17 +742,26 @@ void initialize_mpu() {
   return ;
 }
 
+/*******************************************************************************************************
+* Disable MPU routine
+********************************************************************************************************/
 void disable_mpu() {
   mpu_set_dmp_state(0);
   EIMSK &= ~(1 << INT6);      //deactivate interupt
 }
 
+/*******************************************************************************************************
+* Enable MPU routine
+********************************************************************************************************/
 void enable_mpu() {
   EICRB |= (1 << ISC60) | (1 << ISC61); // sets the interrupt type for EICRB (INT6)
   EIMSK |= (1 << INT6); // activates the interrupt. 6 for 6, etc
   mpu_set_dmp_state(1);  // This enables the DMP; at this point, interrupts should commence
 }
 
+/*******************************************************************************************************
+* Blink LED function
+********************************************************************************************************/
 void blink()
 {
   /**/
@@ -777,6 +778,42 @@ void blink()
 }
 
 
+/*******************************************************************************************************
+* Helper function to wrap an angular value
+********************************************************************************************************/
+float wrap(float angle)
+{
+  if (angle > PI)
+    angle -= (TWOPI);
+  if (angle < -PI)
+    angle += (TWOPI);
+  return angle;
+}
+
+/*******************************************************************************************************
+* [M] Function to recenter the device to the current positional reading
+********************************************************************************************************/
+void recenter()
+{
+  if (outputUI) {
+    Serial.println("M\tR");
+  }
+  sampleCount = 0;
+
+  for (int i = 0; i < 4; i++)
+    compass[i] = 0.0;
+
+  calibrated = false;
+  offsetMag = false;
+
+  if (rawMagHeading > 28000.0  || rawMagHeading < -28000.0) {
+    offsetMag = true;
+  }
+}
+
+/*******************************************************************************************************
+* Convenience function - output a triple array to serial IO
+********************************************************************************************************/
 void tripple(short * v)
 {
   for (int i = 0; i < 3; i++)
@@ -786,6 +823,9 @@ void tripple(short * v)
   }
 }
 
+/*******************************************************************************************************
+* Convenience function - output a triple array prefixed by a message to serial IO
+********************************************************************************************************/
 void mess(char * m, long * v)
 {
   Serial.print(m);
@@ -796,6 +836,9 @@ void mess(char * m, long * v)
 
 
 
+/*******************************************************************************************************
+* Get axis scaling from EEPROM
+********************************************************************************************************/
 void getScales()
 {
   if (expScaleMode)
@@ -812,6 +855,9 @@ void getScales()
 }
 
 
+/*******************************************************************************************************
+* Save axis scaling to EEPROM
+********************************************************************************************************/
 void setScales()
 {
   if (expScaleMode)
@@ -829,6 +875,9 @@ void setScales()
   writeIntEE(EE_LPF, (int)(outputLPF * 32767.0));
 }
 
+/*******************************************************************************************************
+* Convenience function - send a character and a boolean to serial IO
+********************************************************************************************************/
 void sendBool(char x, boolean v)
 {
   Serial.print(x);
@@ -836,6 +885,9 @@ void sendBool(char x, boolean v)
   Serial.println(v);
 }
 
+/*******************************************************************************************************
+* Convenience function - send a character and a byte to serial IO
+********************************************************************************************************/
 void sendByte(char x, byte b)
 {
   Serial.print(x);
@@ -843,12 +895,18 @@ void sendByte(char x, byte b)
   Serial.println(b);
 }
 
+/*******************************************************************************************************
+* [I] Output info string to serial IO
+********************************************************************************************************/
 void sendInfo()
 {
   Serial.print("I\t");
   Serial.println(infoString);
 }
 
+/*******************************************************************************************************
+* [s] Output config data to serial IO (scaling mode, scale settings and LPF setting)
+********************************************************************************************************/
 void scl()
 {
   Serial.print("s\t");
@@ -860,17 +918,23 @@ void scl()
   printtab();
   Serial.println(outputLPF);
 }
+/*******************************************************************************************************
+* [Q] Output raw mag data to serial IO
+********************************************************************************************************/
 void reportRawMag(short mag[])
 {
   Serial.print("Q\t");
   for (int i = 0; i < 3; i++)
   {
-    Serial.print(mag[i]);
+    Serial.print(mag[i]/MAG_SCALEFACTOR);
     printtab();
   }
   Serial.println("");
 }
 
+/*******************************************************************************************************
+* [q] Output the raw mag calibration matrix to serial IO
+********************************************************************************************************/
 void reportRawMagMatrix()
 {
   Serial.print("q\t");
@@ -888,6 +952,9 @@ void reportRawMagMatrix()
   Serial.println("");
 }
 
+/*******************************************************************************************************
+* Recenter the device and put it into the startup phase for a full gyro calibration to be performed
+********************************************************************************************************/
 void fullCalib()
 {
   recenter();
@@ -901,6 +968,9 @@ void printtab()
 }
 
 
+/*******************************************************************************************************
+* Read the mag calibration values from EEPROM and set the runtime vars accordingly
+********************************************************************************************************/
 void loadMagCalibration()
 {
   for (int i = 0; i < 3 ; i ++)
@@ -915,6 +985,10 @@ void loadMagCalibration()
 }
 
 
+/*******************************************************************************************************
+* Wrapper function to do all settings loading - orientation, scaling mode, scaling values and LPF
+* setting
+********************************************************************************************************/
 void loadSettings()
 {
   orientation = constrain(EEPROM.read(EE_ORIENTATION), 0, 3);
