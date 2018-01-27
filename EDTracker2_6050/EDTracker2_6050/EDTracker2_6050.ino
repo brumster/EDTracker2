@@ -2,7 +2,7 @@
 //  Head Tracker Sketch
 //
 
-char* const PROGMEM infoString = "EDTrackerII V2.20.9";
+char* const PROGMEM infoString = "EDTrackerII V2.21.0";
 
 //
 // Changelog:
@@ -34,10 +34,11 @@ char* const PROGMEM infoString = "EDTrackerII V2.20.9";
 //                      Some tidying up while at it
 // 2016-01-30 2.20.9    Version uplift only to reflect re-build with new hardware package, that
 //                      removes the keyboard/mouse aspects from the HID descriptor.
+// 2018-01-28 2.21.0    Version uplift - compiled with motion driver 6.12; no functional changes
 /* ============================================
 EDTracker device code is placed under the MIT License
 
-Copyright (c) 2014-2016 Rob James, Dan Howell
+Copyright (c) 2014-2018 Rob James, Dan Howell
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -883,7 +884,7 @@ void loadBiases() {
   //dmp_set_accel_bias(aBias);
 
   mpu_set_gyro_bias_reg(gBias);
-  mpu_set_accel_bias_6050_reg(aBias, true);
+  mpu_set_accel_bias_6050_reg(aBias);
 
   return ;
 }

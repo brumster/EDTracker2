@@ -1,7 +1,7 @@
 //
 //  Head Tracker Sketch
 //
-const char  infoString []   = "EDTrackerMag V4.0.5";
+const char  infoString []   = "EDTrackerMag V4.1.0";
 
 // Changelog:
 //            Release
@@ -19,10 +19,13 @@ const char  infoString []   = "EDTrackerMag V4.0.5";
 // 2016-01-27 4.0.4   DH      Non-functional code format change to allow compile on IDE 1.6.7
 // 2016-01-30 4.0.5   DH      Removed superfluous debug code, fixed mag scaling for 9250, added compiler
 //                            warnings for people choosing wrong hardware
+// 2017-01-27 4.1.0   DH      Version uplift - compiled with motion driver 6.12; no functional changes
+//                            Will hopefully address "stuck in auto bias forever" issue for some users
+//                            Big thanks to sir-maniac for his contribution ;)
 /* ============================================
 EDTracker device code is placed under the MIT License
 
-Copyright (c) 2014-2016 Rob James, Dan Howell
+Copyright (c) 2014-2018 Rob James, Dan Howell
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -73,9 +76,9 @@ extern "C" {
 #include <inv_mpu_dmp_motion_driver.h>
 }
 
-// In raw reading values from the MPU...
-#define PI    32768.0
-#define TWOPI 65536.0
+// In raw reading values from the MPU, these values correspond to 90 and 180 degrees
+#define DEG90  32768.0
+#define DEG180 65536.0
 
 // Array indices of pitch, yaw and roll
 #define PITCH 1
@@ -780,10 +783,10 @@ void blink()
 ********************************************************************************************************/
 float wrap(float angle)
 {
-  if (angle > PI)
-    angle -= (TWOPI);
-  if (angle < -PI)
-    angle += (TWOPI);
+  if (angle > DEG90)
+    angle -= (DEG180);
+  if (angle < -DEG90)
+    angle += (DEG180);
   return angle;
 }
 
