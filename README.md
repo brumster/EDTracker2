@@ -24,9 +24,9 @@ above repo; the sketches will not compile without them :)
 
 EDTracker 2 sketches are currently as follows :
 
-EDTracker2_6050 - for use with Invensense MPU-6050 breakout boards (accel/gyro only)
-EDTracker2_9150 - for use with Invensense MPU-9150 breakout boards (accel/gyro/magnetometer)
-EDTracker2_9250 - for use with Invensense MPU-9250 breakout boards (accel/gyro/magnetometer)
+- EDTracker2_6050 - for use with Invensense MPU-6050 breakout boards (accel/gyro only)
+- EDTracker2_9150 - for use with Invensense MPU-9150 breakout boards (accel/gyro/magnetometer)
+- EDTracker2_9250 - for use with Invensense MPU-9250 breakout boards (accel/gyro/magnetometer)
 
 Once built, you will need the EDTracker GUI software to calibrate and monitor -
 this is available in binary form only at this stage, via
