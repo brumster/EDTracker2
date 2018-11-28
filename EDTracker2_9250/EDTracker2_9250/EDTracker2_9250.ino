@@ -240,6 +240,7 @@ void setup() {
   cbi(PORTD, 1);
 
   // Initialize the MPU:
+  delay(500);  // Wait boot end of MPU9250 
   initialize_mpu();
   enable_mpu();
 
