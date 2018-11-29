@@ -1,7 +1,7 @@
 //
 //  Head Tracker Sketch
 //
-const char  infoString []   = "EDTrackerMag V4.1.0";
+const char  infoString []   = "EDTrackerMag V4.1.1";
 
 // Changelog:
 //            Release
@@ -22,6 +22,8 @@ const char  infoString []   = "EDTrackerMag V4.1.0";
 // 2017-01-27 4.1.0   DH      Version uplift - compiled with motion driver 6.12; no functional changes
 //                            Will hopefully address "stuck in auto bias forever" issue for some users
 //                            Big thanks to sir-maniac for his contribution ;)
+// 2018-11-29 4.1.1   DH      Add wait time in setup for MPU9250 boot - Fix #10 issue (manoukianv)
+//
 /* ============================================
 EDTracker device code is placed under the MIT License
 
