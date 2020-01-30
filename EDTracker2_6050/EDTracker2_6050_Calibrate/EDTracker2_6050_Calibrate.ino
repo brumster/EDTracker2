@@ -19,6 +19,7 @@ char* const PROGMEM infoString = "ED Tracker Calibration V2.5.3";
 // 2014-09-24           Update for calibration - zone in quicker
 // 2014-09-29           Fixed temperature reporting
 // 2016-01-27 2.5.3     Non-functional code format change to allow compile on IDE 1.6.7
+// 2020-01-30 2.5.3     Fixed incorrect calls to mpu_set_accel_bias_6050_reg (mismatch to func prototype). No functional change.
 
 /* ============================================
 EDTracker device code is placed under the MIT License
@@ -470,7 +471,7 @@ void update_bias_old()
 
   // set gyro to zero and accel to factory bias
   mpu_set_gyro_bias_reg(gyrozero);
-  mpu_set_accel_bias_6050_reg(fBias, 0);
+  mpu_set_accel_bias_6050_reg(fBias);
 
   delay(100);
 
@@ -519,9 +520,9 @@ void update_bias_old()
 
 
     //push the  factory bias back
-    mpu_set_accel_bias_6050_reg(fBias, 0);
+    mpu_set_accel_bias_6050_reg(fBias);
     mpu_set_gyro_bias_reg(gBias);
-    mpu_set_accel_bias_6050_reg(aBias, 1);
+    mpu_set_accel_bias_6050_reg(aBias);
     delay(17);
   }
 
@@ -582,7 +583,7 @@ void mess(char *m, long*v)
 void loadBiases() {
 
   //reset back to factory settings
-  mpu_set_accel_bias_6050_reg(fBias, 0);
+  mpu_set_accel_bias_6050_reg(fBias);
   delay(100);
 
   for (int i = 0; i < 3; i++)
@@ -591,7 +592,7 @@ void loadBiases() {
     aBias[i] = readLongEE (EE_XACCEL + i * 4);
   }
   mpu_set_gyro_bias_reg(gBias);
-  mpu_set_accel_bias_6050_reg(aBias, 1);
+  mpu_set_accel_bias_6050_reg(aBias);
   return ;
 }
 
@@ -625,7 +626,7 @@ void update_bias()
 
   // set gyro to zero and accel to factory bias
   mpu_set_gyro_bias_reg(gyrozero);
-  mpu_set_accel_bias_6050_reg(fBias, 0);
+  mpu_set_accel_bias_6050_reg(fBias);
 
   delay(1000);
 
@@ -687,9 +688,9 @@ void update_bias()
       gyr = gyr / 2;
 
     //push the  factory bias back
-    mpu_set_accel_bias_6050_reg(fBias, 0);
+    mpu_set_accel_bias_6050_reg(fBias);
     mpu_set_gyro_bias_reg(gBias);
-    mpu_set_accel_bias_6050_reg(aBias, 1);
+    mpu_set_accel_bias_6050_reg(aBias);
     delay(800);
   }
 
