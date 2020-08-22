@@ -30,7 +30,7 @@ EDTracker 2 sketches are currently as follows :
 
 Once built, you will need the EDTracker GUI software to calibrate and monitor -
 this is available in binary form only at this stage, via
-http://http://www.edtracker.org.uk/index.php/downloads.
+http://www.edtracker.org.uk/index.php/downloads
 
 Tested/verified with Arduino IDE 1.8.5
 
