@@ -1,0 +1,3 @@
+# Firmwares
+
+These are pre-compiled binary firmwares for the various flavours of DIY EDTracker. These can be used in conjunction with the command line flash tool to upload a firmware into your Arduino Pro Micro without having to use the Arduino IDE. The hardware version of the image should be obvious from the file naming - 6050 is for MPU-6050 devices, 9250 for MPU-9250 devices, etc. Flashing the wrong image into the wrong hardware will result in very odd behaviour.
