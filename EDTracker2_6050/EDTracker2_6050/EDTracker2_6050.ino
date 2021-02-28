@@ -2,7 +2,7 @@
 //  Head Tracker Sketch
 //
 
-char* const PROGMEM infoString = "EDTrackerII V2.21.0";
+char* const PROGMEM infoString = "EDTrackerII V2.21.1";
 
 //
 // Changelog:
@@ -35,6 +35,7 @@ char* const PROGMEM infoString = "EDTrackerII V2.21.0";
 // 2016-01-30 2.20.9    Version uplift only to reflect re-build with new hardware package, that
 //                      removes the keyboard/mouse aspects from the HID descriptor.
 // 2018-01-28 2.21.0    Version uplift - compiled with motion driver 6.12; no functional changes
+// 2021-02-28 2.21.1    Improved i2c reliability (ref GitHub Issue #26) and fix incorrect port config on pullup disable
 /* ============================================
 EDTracker device code is placed under the MIT License
 
@@ -236,6 +237,9 @@ void setup() {
 
   Serial.begin(115200);
 
+  // Short delay, suspected this can help with some Pro Micro i2c faults on startup
+  delay(500);
+  
 #ifdef DEBUG
   outputMode = UI;
 #endif;
@@ -276,18 +280,21 @@ void setup() {
 
   // join I2C bus (I2Cdev library doesn't do this automatically)
   Wire.begin();
+
+  /* Set i2c clock speed. If you're having unreliable i2c comms to the MPU-6050
+     due to noise/etc you can try reducing this down/commenting out
+      12       1       400   kHz  (the maximum supported frequency)
+      32       1       200   kHz
+      72       1       100   kHz  (the default)
+      152      1        50   kHz
+      78       4        25   kHz
+      158      4        12.5 kHz
+  */
   TWBR = 12; // 12 400kHz I2C clock (200kHz if CPU is 8MHz)
-  /*
-  12       1       400   kHz  (the maximum supported frequency)
-  32       1       200   kHz
-  72       1       100   kHz  (the default)
-  152       1        50   kHz
-  78       4        25   kHz
-  158       4        12.5 kHz*/
 
   // Disable internal I2C pull-ups
-  cbi(PORTD, 0);
-  cbi(PORTD, 1);
+  cbi(PORTC, 4);
+  cbi(PORTC, 5);
 
   // Initialize the MPU:
   //
