@@ -35,7 +35,9 @@ Omitting parameters will display the help text, including a list of parameters.
 
 RETRIEVING A LIST OF AVAILABLE IMAGES FOR FLASHING (-l)
 ==================================================
-
+** Deprecated - no longer works as edtracker website no longer available **
+** Use the flash from local file option detailed below instead           **
+	
 Run the command with the -l option. Provided an internet connection is available,
 the tool will connect to the edtracker.org.uk website and retrieve a list of
 available images and display them. The tool then exits.
