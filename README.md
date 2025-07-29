@@ -23,5 +23,8 @@ Once built, you will need the EDTracker GUI software to calibrate and monitor
 
 Tested/verified with Arduino IDE 1.8.5
 
+A note that the source code for the original GUI was not my responsibility and is not available; I have never had it. However a community user has patched the old binary to continue working without the EDTracker website (which disappeared some years ago). His work is available here :
+https://github.com/KenshiHH/EDTrackerUI
+
 Love and manly hugs!
 The EDTracker Team...
